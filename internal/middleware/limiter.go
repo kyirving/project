@@ -1,0 +1,44 @@
+package middleware
+
+import (
+	"net/http"
+	"sync"
+
+	"github.com/gin-gonic/gin"
+	"golang.org/x/time/rate"
+)
+
+type client struct {
+	limiter *rate.Limiter
+}
+
+var (
+	mu      sync.Mutex
+	clients = make(map[string]*client)
+)
+
+func LimiterMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 限制请求频率
+		ip := c.ClientIP()
+
+		mu.Lock()
+		if _, exists := clients[ip]; !exists {
+			// Allow 10 requests per second with a burst of 20
+			clients[ip] = &client{limiter: rate.NewLimiter(10, 20)}
+		}
+		cl := clients[ip]
+		mu.Unlock()
+
+		if !cl.limiter.Allow() {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"code":    http.StatusTooManyRequests,
+				"message": "rate limit exceeded",
+			})
+			return
+		}
+
+		c.Next()
+
+	}
+}
