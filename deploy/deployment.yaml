@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+    spec:
+      containers:
+        - name: app
+          image: app:v1.1.2
+          volumeMounts:
+            - name: config-volume # 配置文件卷名称
+              mountPath: /app/config # 配置文件挂载目录
+      volumes:
+        - name: config-volume # 配置文件卷名称
+          configMap:
+            name: config # ConfigMap 名称
+            items:
+              - key: config.yaml # ConfigMap 中的 key
+                path: config.yaml # 挂载后的文件名

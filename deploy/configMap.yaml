@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config
+  namespace: default
+data:
+  config.yaml: |
+    APP:
+      ENV: dev
+      NAME: project
+      PORT: 8080
+    DB:
+      HOST: rm-bp1mulfriwx56ln526o.mysql.rds.aliyuncs.com
+      PORT: 3306
+      USER: tsgzxsj
+      PASSWORD: ZBkm+a5TuXUDBCNOxv
+      DB_NAME: go_user
+    LOG:
+      MAX_SIZE: 100
+      MAX_BACKUPS: 7
+      MAX_AGE: 30
+      COMPRESS: true
+      BUSINESS:
+        - NAME: app
+          PATH: log/app.log
+        - NAME: error
+          PATH: log/error.log
+        - NAME: access
+          PATH: log/access.log

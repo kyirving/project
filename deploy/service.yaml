@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+  namespace: default
+spec:
+  selector: # 选择器，指定要暴露的 Pod 标签
+    app: app
+  ports:
+    - port: 8080 # 服务端口
+      targetPort: 8080 # 目标端口
+      protocol: TCP # 协议
+      name: http # 名称
+      nodePort: 32000 # 节点端口
+  type: NodePort # 类型
