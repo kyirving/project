@@ -12,7 +12,7 @@ image:
   # This sets the pull policy for images.
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "v1.1.2"
+  tag: "v1.1.5"
 
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
@@ -35,7 +35,10 @@ serviceAccount:
 
 # This is for setting Kubernetes Annotations to a Pod.
 # For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
-podAnnotations: {}
+podAnnotations: 
+  prometheus.io/scrape: "true" # 开启 Prometheus metrics
+  prometheus.io/port: "8080" # Prometheus metrics 端口
+  prometheus.io/path: "/metrics" # Prometheus metrics 路径
 # This is for setting Kubernetes Labels to a Pod.
 # For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
 podLabels: {
@@ -138,15 +141,15 @@ resources:
 # This is to setup the liveness and readiness probes more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
 # 指示容器是否正在运行，是否可以接收流量
 livenessProbe:
-  enabled: false
+  enabled: true
   httpGet:
-    path: /
+    path: /health
     port: http
 # 指示容器是否准备就绪，是否可以接收流量
 readinessProbe:
-  enabled: false
+  enabled: true
   httpGet:
-    path: /
+    path: /ready
     port: http
 
 # This section is for setting up autoscaling more information can be found here: https://kubernetes.io/docs/concepts/workloads/autoscaling/

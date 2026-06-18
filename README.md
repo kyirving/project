@@ -12,7 +12,7 @@
 | 日志         | [Zap](https://github.com/uber-go/zap) + [Lumberjack](https://github.com/natefinch/lumberjack) |
 | ID 生成      | [Snowflake](https://github.com/bwmarrin/snowflake)                   |
 | JWT          | [golang-jwt](https://github.com/golang-jwt/jwt)                      |
-| 容器编排     | Kubernetes + Helm                                                    |
+| 监控         | Prometheus + Grafana                                                 |
 
 ## 项目结构
 
@@ -26,19 +26,24 @@
 │   ├── database/            # GORM 数据库连接 + 建表 SQL
 │   ├── idgen/               # 雪花 ID 生成器
 │   ├── jwt/                 # JWT 签发与解析
-│   └── logger/              # Zap 日志（异步缓冲、按天切割）
+│   ├── logger/              # Zap 日志（异步缓冲、按天切割）
+│   └── metrics/             # Prometheus 指标定义（Counter、Histogram）
 ├── internal/                # 业务逻辑
 │   ├── model/               # 数据模型（User、UserIndex）
 │   ├── repository/          # 数据访问层（分表路由、事务）
 │   ├── service/             # 业务逻辑层
 │   ├── handler/             # Gin HTTP 处理器
-│   └── middleware/          # 中间件（日志、异常、超时、限流、CORS）
+│   └── middleware/          # 中间件（日志、异常、超时、限流、CORS、Metrics）
 ├── router/                  # 路由注册与依赖注入
 ├── utils/                   # 工具包
 │   ├── biz_error/           # 业务错误定义
 │   ├── file/                # 文件工具
 │   └── request/             # 请求结构体
 ├── deploy/                  # Kubernetes 部署配置 + Helm Chart
+│   ├── configMap.yaml       # 应用配置
+│   ├── deployment.yaml      # Deployment 部署
+│   ├── service.yaml         # Service (NodePort)
+│   └── mychart/             # Helm Chart (含 HPA、探针、资源限制)
 ├── Dockerfile               # 多阶段构建
 └── CLAUDE.md                # Claude Code 工作指引
 ```
@@ -159,3 +164,92 @@ helm upgrade app ./deploy/mychart -n <namespace>
 ```
 
 Helm Chart 包含 HPA 自动伸缩、健康检查探针、资源限制等生产级配置。
+
+## 监控（Prometheus + Grafana）
+
+### 内置端点
+
+| 端点       | 用途           | 检查内容                     |
+| ---------- | -------------- | ---------------------------- |
+| `/health`  | Liveness Probe | 进程可响应 HTTP 即可          |
+| `/ready`   | Readiness Probe | DB Ping（失败则摘除流量）     |
+| `/metrics` | Prometheus 抓取 | Go runtime + 自定义 HTTP 指标 |
+
+### 采集的指标
+
+- `http_requests_total` — 按 method / path / status 的请求计数
+- `http_request_duration_seconds` — 请求耗时分布（Histogram）
+- `go_*` / `process_*` — Go runtime 和进程指标（自动采集）
+
+### 本地开发（minikube）
+
+```bash
+# 1. 宿主机拉镜像并 load 进 minikube（解决国内拉不下来的问题）
+docker pull prom/prometheus
+# 使用阿里云镜像，解决国内拉不下来的问题
+docker pull registry.cn-hangzhou.aliyuncs.com/chenby/kube-state-metrics:v2.19.0
+docker tag registry.cn-hangzhou.aliyuncs.com/chenby/kube-state-metrics:v2.19.0 registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.1
+docker pull grafana/grafana:latest
+minikube image load prom/prometheus
+minikube image load grafana/grafana:latest
+minikube image load registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.1
+
+
+# 2. 安装 Prometheus（轻量版，去掉不需要的组件）
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm install prometheus prometheus-community/prometheus \
+  --namespace monitoring --create-namespace \
+  --set alertmanager.enabled=false \
+  --set pushgateway.enabled=false \
+  --set server.persistentVolume.enabled=false \
+  --set kube-state-metrics.enabled=false \
+  --set prometheus-node-exporter.enabled=false \
+  --set server.image.pullPolicy=IfNotPresent
+
+# 3. 安装 Grafana
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+helm install grafana grafana/grafana \
+  --namespace monitoring \
+  --set image.pullPolicy=IfNotPresent \
+  --set adminPassword=admin
+
+# 4. 部署你的应用（确认 values.yaml 中 podAnnotations 已配好）
+helm install app ./deploy/mychart -n default
+
+# 5. 端口转发
+kubectl port-forward -n monitoring svc/prometheus-server 9090:80 &
+kubectl port-forward -n monitoring svc/grafana 3000:80 &
+```
+
+### Grafana 配置
+
+1. 打开 `http://localhost:3000`，账号 `admin`，密码 `admin`
+2. Administration → Data sources → Add data source → Prometheus
+3. URL 填 `http://prometheus-server.monitoring:80`，Save & test
+4. Dashboards → Import → ID 填 `11074`（Go 应用模板），选择数据源即可
+
+### PromQL 示例
+
+```promql
+# QPS
+rate(http_requests_total[1m])
+
+# P99 延迟
+histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[1m]))
+
+# 错误率
+sum(rate(http_requests_total{status="500"}[1m])) / sum(rate(http_requests_total[1m]))
+```
+
+### 生产环境
+
+生产环境推荐 `kube-prometheus-stack`（集成 Prometheus Operator + Grafana + 预置仪表盘），只需在 Helm values 中配置 `podAnnotations`：
+
+```yaml
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/metrics"
+```

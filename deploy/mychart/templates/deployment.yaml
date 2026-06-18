@@ -46,11 +46,15 @@ spec:
               protocol: TCP
           {{- if .Values.livenessProbe.enabled }}
           livenessProbe:
-            {{- toYaml . | nindent 12 }}
+            httpGet:
+              path: {{ .Values.livenessProbe.httpGet.path | default "/health" }}
+              port: {{ .Values.livenessProbe.httpGet.port | default "http" }}
           {{- end }}
           {{- if .Values.readinessProbe.enabled }}
           readinessProbe:
-            {{- toYaml . | nindent 12 }}
+            httpGet:
+              path: {{ .Values.readinessProbe.httpGet.path | default "/ready" }}
+              port: {{ .Values.readinessProbe.httpGet.port | default "http" }}  
           {{- end }}
           {{- with .Values.resources }}
           resources:
